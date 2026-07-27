@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body {
+  background-color: #FAF9F5;
+  color: #16241D;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.screen {
+  max-width: 28rem;
+  margin: 0 auto;
+  min-height: 100dvh;
+  position: relative;
+  background-color: #FAF9F5;
+}
+
+/* Used by pages that render a nav (list/dashboard screens): stays the mobile
+   card width by default, widens at tablet, and reserves the sidebar's 16rem
+   at desktop instead of centering, since a centered box would run under it. */
+.dash-shell {
+  max-width: 28rem;
+  margin: 0 auto;
+  min-height: 100dvh;
+  position: relative;
+  background-color: #FAF9F5;
+}
+@media (min-width: 768px) {
+  .dash-shell { max-width: 48rem; }
+}
+@media (min-width: 1024px) {
+  .dash-shell { max-width: none; margin: 0; margin-left: 16rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+  animation-duration: 0.001ms !important;
+  transition-duration: 0.001ms !important;
+  }
+}

@@ -1,0 +1,145 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  RIDER
+  BUSINESS
+  ADMIN
+}
+
+enum RiderStatus {
+  PENDING    // applied, awaiting admin verification
+  VERIFIED   // can accept jobs
+  SUSPENDED  // blocked by admin
+}
+
+enum OrderStatus {
+  PLACED
+  ASSIGNED
+  PICKED_UP
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+// Fixed set of Kigali neighborhoods, used for pickup/dropoff zone + "busiest zone" stats.
+enum Zone {
+  KIMIRONKO
+  NYARUTARAMA
+  REMERA
+  KACYIRU
+  KIMISAGARA
+  NYAMIRAMBO
+  GIKONDO
+  KICUKIRO
+  GISOZI
+  KABEZA
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  phone        String   @unique
+  passwordHash String
+  role         Role
+  language     String   @default("rw")
+  // Simplified demo auth: a random bearer token reissued on login. No expiry
+  // or invalidation — deliberate scope cut for this school project, not an oversight.
+  authToken    String?  @unique
+  createdAt    DateTime @default(now())
+
+  riderProfile    RiderProfile?
+  businessProfile BusinessProfile?
+
+  ordersPlaced Order[] @relation("OrdersPlaced")
+  ordersRidden Order[] @relation("OrdersRidden")
+
+  @@index([role])
+}
+
+model RiderProfile {
+  id         String      @id @default(cuid())
+  userId     String      @unique
+  user       User        @relation(fields: [userId], references: [id])
+  status     RiderStatus @default(PENDING)
+  vehicle    String      @default("e-bicycle")
+  // Self-selected at registration (no GPS in scope) — used to filter the USSD
+  // "jobs near me" list to orders picking up or dropping off in this zone.
+  homeZone   Zone?
+  createdAt  DateTime    @default(now())
+}
+
+model BusinessProfile {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id])
+  businessName String
+  address      String?
+  createdAt    DateTime @default(now())
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  customerId  String
+  customer    User        @relation("OrdersPlaced", fields: [customerId], references: [id])
+  riderId     String?
+  rider       User?       @relation("OrdersRidden", fields: [riderId], references: [id])
+
+  pickup      String
+  pickupZone  Zone
+  dropoff     String
+  dropoffZone Zone
+  item        String
+  weight      Float
+  cost        Int         // total fee charged to customer, RWF
+  riderPayout Int         // rider's cut of cost, RWF (80%)
+  status      OrderStatus @default(PLACED)
+
+  createdAt   DateTime  @default(now())
+  assignedAt  DateTime?
+  pickedUpAt  DateTime?
+  deliveredAt DateTime?
+  cancelledAt DateTime?
+
+  payment Payment?
+  rating  Rating?
+
+  @@index([status])
+  @@index([customerId])
+  @@index([riderId])
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  orderId         String        @unique
+  order           Order         @relation(fields: [orderId], references: [id])
+  amount          Int
+  momoPhone       String
+  status          PaymentStatus @default(PENDING)
+  transactionRef  String        @unique
+  createdAt       DateTime      @default(now())
+}
+
+model Rating {
+  id        String   @id @default(cuid())
+  orderId   String   @unique
+  order     Order    @relation(fields: [orderId], references: [id])
+  riderId   String   // denormalized for fast rider rating aggregates
+  stars     Int
+  comment   String?
+  createdAt DateTime @default(now())
+
+  @@index([riderId])
+}
