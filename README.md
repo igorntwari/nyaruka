@@ -13,6 +13,17 @@ The project has two parts:
 
 This README assumes no prior familiarity with the project.
 
+## Live demo
+
+- **App:** [https://nyaruka-web.onrender.com](https://nyaruka-web.onrender.com)
+- **API:** [https://nyaruka-api.onrender.com/api/health](https://nyaruka-api.onrender.com/api/health)
+- **SRS:** [Software Requirements Specification](https://docs.google.com/document/d/1-BVO4HhYgLe_hq1IVuHykHNGaJQxcV-TGSpHbjJhTtQ/edit?usp=sharing)
+
+Both are hosted on Render (free tier — the API may take ~30–60 seconds to
+wake up on the very first request after a period of inactivity; subsequent
+requests are fast). The database is seeded, so the demo credentials below
+work immediately, no sign-up required. See [Demo login credentials](#demo-login-credentials).
+
 ## Prerequisites
 
 - **Node.js 18.18+** (Node 20 LTS recommended) and npm
@@ -24,7 +35,7 @@ This README assumes no prior familiarity with the project.
 ## 1. Clone and install dependencies
 
 ```bash
-git clone <this-repo-url> nyaruka
+git clone https://github.com/igorntwari/nyaruka.git
 cd nyaruka
 
 # Frontend deps (repo root)
@@ -97,7 +108,7 @@ npm run prisma:seed         # populates demo accounts, orders, ratings
 want a clean demo state. It creates:
 
 - 1 admin, 13 riders (mixed verified/pending/suspended), 5 businesses, 26 customers
-- 56 orders spanning every status (placed, assigned, picked up, delivered,
+- 55 orders spanning every status (placed, assigned, picked up, delivered,
   cancelled, and a few with failed payments), so every dashboard and filter
   has something to show
 - Ratings on ~85% of delivered orders
@@ -107,16 +118,21 @@ want a clean demo state. It creates:
 Two terminals, both from the repo root:
 
 ```bash
-# Terminal 1 — backend (http://localhost:4000)
+# Terminal 1 — backend, listens on the PORT set in server/.env (default 4000)
 cd server
 npm run dev
 
-# Terminal 2 — frontend (http://localhost:5050)
+# Terminal 2 — frontend (http://localhost:8000, per the "dev" script in package.json)
 npm run dev
 ```
 
-Open **http://localhost:5050**. Best viewed at mobile width — the UI is
+Open **http://localhost:8000**. Best viewed at mobile width — the UI is
 mobile-first, matching how most users would actually access this in Kigali.
+
+> If you change `PORT` in `server/.env` away from its default (4000), the
+> frontend won't find the backend automatically — set
+> `NEXT_PUBLIC_API_URL=http://localhost:<your-port>/api` in a `.env.local`
+> file at the repo root to match (see [step 2](#2-configure-environment-variables)).
 
 ## Demo login credentials
 
@@ -274,33 +290,48 @@ Token choices are documented as comments in `tailwind.config.js`:
 
 ## Deployment
 
-The frontend and backend deploy independently.
+Both services are deployed on [Render](https://render.com), each as its own
+free-tier Web Service, plus a free-tier managed Postgres instance. This is
+exactly how the live demo above is running, so you can reproduce it (or fork
+it to your own Render account) with these settings:
 
-**Frontend (Vercel or similar):**
-1. Import this repo, keep the **root directory** as the project root (not `server/`).
-2. Build command `next build` — output handling is automatic for Next.js.
-3. Set the environment variable `NEXT_PUBLIC_API_URL` to your deployed
-   backend's URL with `/api` appended, e.g. `https://nyaruka-api.example.com/api`.
+**Backend — `nyaruka-api` (Render Web Service):**
+- Root directory: `server`
+- Build command: `npm install && npx prisma generate`
+- Start command: `npm start`
+- Env vars: `DATABASE_URL` (the Postgres instance's connection string —
+  Render's *external* connection string works even from outside Render's
+  network, which is what let this be seeded from a local machine), plus
+  optionally `AT_USERNAME`/`AT_API_KEY` if you want real SMS delivery.
+- Render's Postgres free tier denies external connections by default — add
+  an IP allow-list entry (`0.0.0.0/0` for "anywhere", or narrower if you
+  prefer) on the database before trying to reach it from outside Render.
+- Render's free plan doesn't support pre-deploy commands or one-off jobs, so
+  `prisma migrate deploy` and the seed script were run directly from a local
+  machine against the database's external connection string, once, after
+  the schema/allow-list were in place:
+  ```bash
+  DATABASE_URL="<external connection string>" npx prisma migrate deploy
+  DATABASE_URL="<external connection string>" npm run prisma:seed
+  ```
 
-**Backend (Render, Railway, Fly.io, or similar):**
-1. Set the **root directory** to `server/`.
-2. Build command: `npm install && npx prisma generate`. Start command: `npm start`.
-3. Provision a managed PostgreSQL instance on the same platform and set
-   `DATABASE_URL` to its connection string.
-4. After first deploy, run migrations and seed against the production
-   database once (via the platform's shell/console, or a one-off job):
-   ```bash
-   npx prisma migrate deploy
-   npm run prisma:seed
-   ```
-5. Leave `AT_API_KEY` unset unless you have your own Africa's Talking
-   account — SMS sends will simply be logged instead of delivered, which
-   doesn't affect any other functionality.
-6. CORS is already handled — the backend allows all origins by default via
-   the `cors()` middleware in `server/src/index.js`.
+**Frontend — `nyaruka-web` (Render Web Service):**
+- Root directory: repo root (not `server/`)
+- Build command: `npm install && npm run build`
+- Start command: `next start -p $PORT` (Render assigns the port at runtime
+  via the `PORT` env var — the `next start -p 5050` in `package.json` is
+  for local use only and is overridden by this start command on Render)
+- Env var: `NEXT_PUBLIC_API_URL=https://nyaruka-api.onrender.com/api` — this
+  is a build-time value for Next.js, so it must be set *before* the build
+  runs, not just at runtime.
 
-After both are deployed, confirm the frontend is actually talking to the
-deployed backend (not `localhost`) by checking `NEXT_PUBLIC_API_URL` in the
-frontend's deployed environment settings, and make sure the seed step has run
-against the production database so graders see a populated app rather than
-an empty one.
+**Notes if you redeploy or fork this:**
+- Free-tier Render web services spin down after inactivity, so the very
+  first request after a quiet period can take 30–60 seconds — normal, not a bug.
+- The free Postgres instance expires 30 days after creation; recreate it
+  (and re-run migrate + seed) if it's been longer than that.
+- Whatever platform you use, always confirm the deployed frontend is
+  actually calling the deployed backend and not `localhost` — the browser's
+  network tab (or `curl`) should show requests going to your backend's real
+  URL — and make sure the seed step has run against the production database
+  so graders see a populated app rather than an empty one.
